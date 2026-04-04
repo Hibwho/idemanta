@@ -50,15 +50,28 @@ A multi-agent desktop IDE built with Tauri, React, and TypeScript. Orchestrate m
 - [Rust](https://rustup.rs/) (1.70+)
 - [Node.js](https://nodejs.org/) (20+)
 - [pnpm](https://pnpm.io/)
+- An AI coding agent CLI (e.g. `claude` CLI with a subscription)
+
+### Optional
+
+- [Ruflo](https://github.com/ruvnet/ruflo) — Multi-agent orchestration (`npm install -g ruflo`)
 
 ### Install and Run
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/idemanta.git
+git clone https://github.com/Hibwho/idemanta.git
 cd idemanta
 pnpm install
 pnpm tauri dev
 ```
+
+### Platform Support
+
+| Platform | Status |
+|----------|--------|
+| Linux (X11/Wayland) | Fully tested |
+| macOS | Supported (Tauri 2) |
+| Windows | Supported (Tauri 2) |
 
 ### Build for Production
 

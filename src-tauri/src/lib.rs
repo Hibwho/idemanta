@@ -364,9 +364,15 @@ async fn open_terminal(
         })
         .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+    let (shell, login_arg) = if cfg!(target_os = "windows") {
+        (std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()), None)
+    } else {
+        (std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()), Some("--login"))
+    };
     let mut cmd = CommandBuilder::new(&shell);
-    cmd.arg("--login");
+    if let Some(arg) = login_arg {
+        cmd.arg(arg);
+    }
     if let Some(ref dir) = cwd {
         cmd.cwd(dir);
     }
@@ -430,6 +436,18 @@ async fn resize_terminal(
 }
 
 #[tauri::command]
+async fn get_home_dir() -> Result<String, String> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| "Cannot determine home directory".into())
+}
+
+#[tauri::command]
+async fn get_platform() -> Result<String, String> {
+    Ok(std::env::consts::OS.to_string())
+}
+
+#[tauri::command]
 async fn read_file_content(path: String) -> Result<String, String> {
     tokio::fs::read_to_string(&path)
         .await
@@ -460,6 +478,8 @@ pub fn run() {
             open_terminal,
             write_terminal,
             resize_terminal,
+            get_home_dir,
+            get_platform,
             get_project_files,
             get_dir_children,
             read_file_content,

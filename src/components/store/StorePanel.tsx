@@ -34,10 +34,11 @@ function StoreItemCard({ item, onInstalled }: { item: StoreItem; onInstalled?: (
       } else if (item.source === "npm") {
         await invoke("run_shell_command", { command: "npm", args: ["install", "-g", item.package] });
       } else if (item.source === "github") {
+        const homeDir = await invoke<string>("get_home_dir");
         const safeName = item.package.replace(/\//g, "-");
-        const destDir = `/home/manta/.idemanta/extensions/${safeName}`;
-        await invoke("run_shell_command", { command: "mkdir", args: ["-p", "/home/manta/.idemanta/extensions"] });
-        // Remove existing if re-installing
+        const extDir = `${homeDir}/.idemanta/extensions`;
+        const destDir = `${extDir}/${safeName}`;
+        await invoke("run_shell_command", { command: "mkdir", args: ["-p", extDir] }).catch(() => {});
         await invoke("run_shell_command", { command: "rm", args: ["-rf", destDir] }).catch(() => {});
         await invoke("run_shell_command", {
           command: "git",

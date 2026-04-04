@@ -19,12 +19,22 @@ export function SearchPanel({ projectPath }: { projectPath: string }) {
     if (!query.trim() || !projectPath) return;
     setSearching(true);
     try {
+      // Try grep (Linux/macOS), fallback to findstr (Windows)
       const includes = ["ts","tsx","js","jsx","rs","py","json","md","css","html","yaml","yml","toml","sh","txt"]
         .flatMap((ext) => ["--include", `*.${ext}`]);
-      const rawLines = await invoke<string>("run_shell_command", {
-        command: "grep",
-        args: ["-rn", ...includes, "--", query, projectPath],
-      });
+      let rawLines: string;
+      try {
+        rawLines = await invoke<string>("run_shell_command", {
+          command: "grep",
+          args: ["-rn", ...includes, "--", query, projectPath],
+        });
+      } catch {
+        // Windows fallback
+        rawLines = await invoke<string>("run_shell_command", {
+          command: "findstr",
+          args: ["/S", "/N", query, `${projectPath}\\*.*`],
+        });
+      }
       const parsed: SearchResult[] = rawLines
         .split("\n")
         .filter(Boolean)

@@ -21,24 +21,27 @@ export interface PluginManager {
   uninstallPlugin: (id: string) => Promise<void>;
 }
 
-const PLUGINS_DIR = "/home/manta/.idemanta/extensions";
-const PLUGINS_CONFIG = "/home/manta/.idemanta/plugins.json";
+async function getExtensionsDir(): Promise<string> {
+  const home = await invoke<string>("get_home_dir");
+  return `${home}/.idemanta/extensions`;
+}
 
 /**
  * Scan installed extensions and build plugin registry
  */
 export async function scanPlugins(): Promise<Plugin[]> {
   try {
+    const pluginsDir = await getExtensionsDir();
     const raw = await invoke<string>("run_shell_command", {
       command: "ls",
-      args: ["-1", PLUGINS_DIR],
+      args: ["-1", pluginsDir],
     });
 
     const dirs = raw.split("\n").filter(Boolean);
     const plugins: Plugin[] = [];
 
     for (const dir of dirs) {
-      const pluginPath = `${PLUGINS_DIR}/${dir}`;
+      const pluginPath = `${pluginsDir}/${dir}`;
       try {
         // Try to read plugin manifest (package.json or plugin.json)
         let manifest: Record<string, string> = { name: dir, version: "0.0.0", description: "" };
