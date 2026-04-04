@@ -1,30 +1,53 @@
-# IDEManta
+<p align="center">
+  <img src="assets/banner.png" alt="IDEManta" width="100%" />
+</p>
 
-A multi-agent desktop IDE built with Tauri, React, and TypeScript. Orchestrate multiple AI agents, manage projects with teams, and code — all from a single interface.
+<p align="center">
+  <strong>A multi-agent desktop IDE built for the age of AI coding.</strong>
+</p>
+
+---
+
+## Why IDEManta?
+
+Today's AI coding assistants live in the terminal. They're powerful, but using them means constantly switching between your editor, your terminal, and multiple agent sessions. Want three agents working on different parts of your project? Open three terminals. Want to see what they're doing? Switch tabs. Want to edit a file they just created? Open another window.
+
+**IDEManta solves this.** It's a native desktop IDE that wraps AI coding agents directly inside a full-featured editor. No API keys required — it connects to your existing CLI agent and subscription. You get:
+
+- **One window, everything visible.** Editor, file tree, terminal, agents, all in one place.
+- **Multiple agents, zero tab-switching.** Spawn named agents with different specialities, chat with each of them, see their progress — all from a single panel.
+- **No extra cost.** IDEManta wraps your existing CLI agent. If you already have a subscription, you're set. No API keys, no per-token billing.
+- **Built for two workflows.** Code readers get Monaco editor with syntax highlighting, git, search. Vibe coders get the Agent View to watch their agents work without touching code.
+- **Project teams.** Describe your project, IDEManta generates a team of agents — lead orchestrator, frontend dev, backend dev, security auditor — and coordinates them.
+
+Think of it as what would happen if VS Code and an AI agent orchestrator had a baby.
 
 ## Features
 
 - **Multi-Agent System** — Spawn named agents with custom specialities, chat with them in real-time
-- **Project Teams** — Auto-generate agent teams based on project description (orchestrator, frontend, backend, security, etc.)
+- **Project Teams** — Auto-generate agent teams based on project description
 - **Monaco Editor** — Full code editor with custom dark theme, syntax highlighting, auto-save, breadcrumbs
-- **Integrated Terminal** — Real PTY terminal with multi-tab support (xterm.js)
-- **File Explorer** — Tree view with colored file icons, right-click context menu (new file, rename, delete)
-- **Git Integration** — View status, stage/unstage files, commit directly from the sidebar
+- **Integrated Terminal** — Real PTY terminal with multi-tab support
+- **File Explorer** — Tree view with colored file icons, context menu (new file, rename, delete)
+- **Git Integration** — Status, stage/unstage, commit from the sidebar
 - **Search** — Full-text search across project files with highlighted matches
-- **Extension Store** — Browse and install MCP servers, skills, and tools from a curated catalog or search GitHub
-- **Runtime Manager** — Detect installed languages/tools, install missing ones, manage virtual environments
+- **Extension Store** — Browse and install MCP servers, skills, and tools — or search GitHub directly
+- **Runtime Manager** — Detect installed languages and tools, create virtual environments
 - **Command Palette** — Quick access to all commands (Ctrl+K)
-- **Plugin System** — Extensible architecture for custom plugins
+- **Settings** — CLI or API authentication, permission controls
+- **Plugin System** — Extensible architecture for custom extensions
 
 ## Tech Stack
 
-- **Desktop**: Tauri 2 (Rust + Webview)
-- **Frontend**: React 19, TypeScript, Tailwind CSS v4
-- **Editor**: Monaco Editor
-- **Terminal**: xterm.js with PTY
-- **State**: Zustand
-- **Icons**: Lucide React
-- **Build**: Vite 7
+| Layer | Technology |
+|-------|-----------|
+| Desktop | Tauri 2 (Rust + Webview) |
+| Frontend | React 19, TypeScript, Tailwind CSS v4 |
+| Editor | Monaco Editor |
+| Terminal | xterm.js + native PTY |
+| State | Zustand |
+| Icons | Lucide React |
+| Build | Vite 7 |
 
 ## Keyboard Shortcuts
 
@@ -35,7 +58,7 @@ A multi-agent desktop IDE built with Tauri, React, and TypeScript. Orchestrate m
 | Ctrl+S | Save File |
 | Ctrl+W | Close Tab |
 | Ctrl+Tab | Next Tab |
-| Ctrl+` | Toggle Terminal |
+| Ctrl+\` | Toggle Terminal |
 | Ctrl+B | Toggle Right Panel |
 | Ctrl+N | New Agent |
 | Ctrl+Shift+E | Explorer |
@@ -50,11 +73,7 @@ A multi-agent desktop IDE built with Tauri, React, and TypeScript. Orchestrate m
 - [Rust](https://rustup.rs/) (1.70+)
 - [Node.js](https://nodejs.org/) (20+)
 - [pnpm](https://pnpm.io/)
-- An AI coding agent CLI (e.g. `claude` CLI with a subscription)
-
-### Optional
-
-- [Ruflo](https://github.com/ruvnet/ruflo) — Multi-agent orchestration (`npm install -g ruflo`)
+- An AI coding agent CLI installed and authenticated
 
 ### Install and Run
 
@@ -65,24 +84,53 @@ pnpm install
 pnpm tauri dev
 ```
 
-### Platform Support
-
-| Platform | Status |
-|----------|--------|
-| Linux (X11/Wayland) | Fully tested |
-| macOS | Supported (Tauri 2) |
-| Windows | Supported (Tauri 2) |
-
 ### Build for Production
 
 ```bash
 pnpm tauri build
 ```
 
+### Platform Support
+
+| Platform | Status |
+|----------|--------|
+| Linux (X11 / Wayland) | Fully tested |
+| macOS | Supported |
+| Windows | Supported |
+
+## Project Structure
+
+```
+idemanta/
+├── src/                        # React frontend
+│   ├── components/
+│   │   ├── agents/             # Agent cards, chat, panel
+│   │   ├── agentview/          # Visual agent dashboard
+│   │   ├── commandpalette/     # Ctrl+K command palette
+│   │   ├── editor/             # Monaco editor wrapper
+│   │   ├── filetree/           # File explorer + context menu
+│   │   ├── git/                # Git status, stage, commit
+│   │   ├── menubar/            # Top menu bar with dropdowns
+│   │   ├── project/            # Project team management
+│   │   ├── runtime/            # Runtime and environment manager
+│   │   ├── search/             # File search
+│   │   ├── settings/           # Settings modal
+│   │   ├── store/              # Extension marketplace
+│   │   └── terminal/           # Multi-tab terminal (xterm.js)
+│   ├── stores/                 # Zustand state management
+│   ├── lib/                    # Persistence, plugins, utilities
+│   └── App.tsx                 # Main layout
+├── src-tauri/                  # Rust backend
+│   └── src/
+│       ├── lib.rs              # Tauri commands (PTY, agents, file ops)
+│       └── main.rs             # Entry point
+└── package.json
+```
+
+## Contributing
+
+Contributions are welcome. Fork the repo, create a branch, and open a PR.
+
 ## License
 
 MIT
-
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
