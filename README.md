@@ -22,6 +22,34 @@ Today's AI coding assistants live in the terminal. They're powerful, but using t
 
 Think of it as what would happen if VS Code and an AI agent orchestrator had a baby.
 
+## Screenshots
+
+<p align="center">
+  <img src="assets/screenshots/welcome.png" alt="Welcome Screen" width="100%" />
+</p>
+
+<details>
+<summary><strong>Agents — Create and chat with multiple AI agents</strong></summary>
+<p align="center">
+  <img src="assets/screenshots/create-agent.png" alt="Create Agent" width="360" />
+  <img src="assets/screenshots/agents-chat.png" alt="Agent Chat" width="360" />
+</p>
+<p align="center">
+  <img src="assets/screenshots/agents-panel.png" alt="Agents Panel" width="360" />
+</p>
+</details>
+
+<details>
+<summary><strong>Projects — Auto-generate teams of agents</strong></summary>
+<p align="center">
+  <img src="assets/screenshots/project-create.png" alt="Create Project" width="360" />
+  <img src="assets/screenshots/project-team.png" alt="Project Team" width="360" />
+</p>
+<p align="center">
+  <img src="assets/screenshots/project-running.png" alt="Project Running" width="360" />
+</p>
+</details>
+
 ## Features
 
 - **Multi-Agent System** — Spawn named agents with custom specialities, chat with them in real-time
