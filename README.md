@@ -15,9 +15,10 @@ Today's AI coding assistants live in the terminal. They're powerful, but using t
 **IDEManta solves this.** It's a native desktop IDE that wraps AI coding agents directly inside a full-featured editor. No API keys required — it connects to your existing CLI agent and subscription. You get:
 
 - **One window, everything visible.** Editor, file tree, terminal, agents, all in one place.
+- **Team Chat.** One unified chat for all your agents. Use `@Patrick` to talk to a specific agent, or just type to talk to the team. Every agent has its own name, color, and personality — like a real dev team in a group chat.
 - **Multiple agents, zero tab-switching.** Spawn named agents with different specialities, chat with each of them, see their progress — all from a single panel.
 - **No extra cost.** IDEManta wraps your existing CLI agent. If you already have a subscription, you're set. No API keys, no per-token billing.
-- **Built for two workflows.** Code readers get Monaco editor with syntax highlighting, git, search. Vibe coders get the Agent View to watch their agents work without touching code.
+- **Built for two workflows.** Code readers get Monaco editor with syntax highlighting, git, search. Vibe coders get the Agent View and Team Chat to direct their agents without touching code.
 - **Project teams.** Describe your project, IDEManta generates a team of agents — lead orchestrator, frontend dev, backend dev, security auditor — and coordinates them.
 
 Think of it as what would happen if VS Code and an AI agent orchestrator had a baby.
@@ -52,7 +53,8 @@ Think of it as what would happen if VS Code and an AI agent orchestrator had a b
 
 ## Features
 
-- **Multi-Agent System** — Spawn named agents with custom specialities, chat with them in real-time
+- **Team Chat** — One unified chat for all agents. @mention by name to target a specific agent, or broadcast to the team
+- **Multi-Agent System** — Spawn named agents with custom specialities, each with their own personality and color
 - **Project Teams** — Auto-generate agent teams based on project description
 - **Monaco Editor** — Full code editor with custom dark theme, syntax highlighting, auto-save, breadcrumbs
 - **Integrated Terminal** — Real PTY terminal with multi-tab support

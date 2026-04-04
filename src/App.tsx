@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { FileTree } from "./components/filetree/FileTree";
 import { Editor } from "./components/editor/Editor";
 import { AgentView } from "./components/agentview/AgentView";
+import { TeamChat } from "./components/teamchat/TeamChat";
 import { MenuBar, MenuBarActions } from "./components/menubar/MenuBar";
 import { CommandPalette, useCommands } from "./components/commandpalette/CommandPalette";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -25,7 +26,7 @@ import {
   Store, Files, PanelRightClose, PanelRightOpen,
   Search, GitBranch, Terminal, ScrollText,
   PanelBottomClose, PanelBottomOpen, Bug, FileText,
-  Package,
+  Package, MessageSquare,
 } from "lucide-react";
 import "./index.css";
 
@@ -37,7 +38,7 @@ interface AgentEvent {
 
 type RightTab = "agents" | "projects" | "store";
 type LeftTab = "files" | "search" | "git" | "runtime";
-type CenterView = "editor" | "agentview";
+type CenterView = "editor" | "agentview" | "teamchat";
 type BottomPanel = "terminal" | "output" | "debug" | "logs" | null;
 
 function App() {
@@ -250,6 +251,22 @@ function App() {
             )}
           </button>
 
+          {/* Team Chat toggle (center) */}
+          <button
+            onClick={() => setCenterView(centerView === "teamchat" ? "editor" : "teamchat")}
+            title="Team Chat"
+            className={`w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-all relative ${
+              centerView === "teamchat"
+                ? "text-[var(--text-primary)] bg-[var(--bg-elevated)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <MessageSquare size={18} />
+            {centerView === "teamchat" && (
+              <div className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r bg-[var(--accent)]" />
+            )}
+          </button>
+
           {/* Terminal toggle */}
           <button
             onClick={() => setBottomPanel(bottomPanel === "terminal" ? null : "terminal")}
@@ -322,7 +339,9 @@ function App() {
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Center content */}
           <div style={{ flex: bottomPanel ? "1 1 0%" : "1 1 100%", minHeight: 0, overflow: "hidden" }}>
-            {centerView === "editor" ? <Editor /> : <AgentView />}
+            {centerView === "editor" && <Editor />}
+            {centerView === "agentview" && <AgentView />}
+            {centerView === "teamchat" && <TeamChat />}
           </div>
 
           {/* Bottom Panel (Terminal / Output) */}
