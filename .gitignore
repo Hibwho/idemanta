@@ -5,14 +5,5 @@ dist/
 .env
 .DS_Store
 logs/
-.claude-flow/
-.swarm/
-.claude/
-.ruflo/
-.mcp.json
 *.pid
-
 .vscode/
-CLAUDE.md
-PROJECT.md
-.swarm/

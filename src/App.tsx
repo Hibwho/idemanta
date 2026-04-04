@@ -36,7 +36,8 @@ interface AgentEvent {
 }
 
 type RightTab = "agents" | "projects" | "store";
-type LeftTab = "files" | "search" | "git" | "agentview" | "runtime";
+type LeftTab = "files" | "search" | "git" | "runtime";
+type CenterView = "editor" | "agentview";
 type BottomPanel = "terminal" | "output" | "debug" | "logs" | null;
 
 function App() {
@@ -50,6 +51,7 @@ function App() {
   };
   const [rightTab, setRightTab] = useState<RightTab>("agents");
   const [leftTab, setLeftTab] = useState<LeftTab>("files");
+  const [centerView, setCenterView] = useState<CenterView>("editor");
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [bottomPanel, setBottomPanel] = useState<BottomPanel>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -185,7 +187,7 @@ function App() {
     onShowGit: () => setLeftTab("git"),
     onShowAgents: () => { setRightTab("agents"); setRightPanelOpen(true); },
     onShowStore: () => { setRightTab("store"); setRightPanelOpen(true); },
-    onShowAgentView: () => setLeftTab("agentview"),
+    onShowAgentView: () => setCenterView("agentview"),
   });
 
   const runningCount = agents.filter((a) => a.status === "running").length;
@@ -211,7 +213,6 @@ function App() {
             { key: "files" as LeftTab, icon: Files, tip: "Explorer" },
             { key: "search" as LeftTab, icon: Search, tip: "Search" },
             { key: "git" as LeftTab, icon: GitBranch, tip: "Source Control" },
-            { key: "agentview" as LeftTab, icon: Users, tip: "Agent View" },
             { key: "runtime" as LeftTab, icon: Package, tip: "Runtimes & Environments" },
           ]).map(({ key, icon: Icon, tip }) => (
             <button
@@ -232,6 +233,22 @@ function App() {
           ))}
 
           <div className="flex-1" />
+
+          {/* Agent View toggle (center) */}
+          <button
+            onClick={() => setCenterView(centerView === "agentview" ? "editor" : "agentview")}
+            title="Agent View"
+            className={`w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-all relative ${
+              centerView === "agentview"
+                ? "text-[var(--text-primary)] bg-[var(--bg-elevated)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]/50"
+            }`}
+          >
+            <Users size={18} />
+            {centerView === "agentview" && (
+              <div className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r bg-[var(--accent)]" />
+            )}
+          </button>
 
           {/* Terminal toggle */}
           <button
@@ -261,7 +278,7 @@ function App() {
           {/* Sidebar header */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border)]">
             <span className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-              {leftTab === "files" ? "Explorer" : leftTab === "search" ? "Search" : leftTab === "git" ? "Source Control" : leftTab === "runtime" ? "Runtimes" : "Agent View"}
+              {leftTab === "files" ? "Explorer" : leftTab === "search" ? "Search" : leftTab === "git" ? "Source Control" : "Runtimes"}
             </span>
             {runningCount > 0 && (
               <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--green-dim)] text-[var(--green)] font-medium">
@@ -296,11 +313,6 @@ function App() {
           {leftTab === "runtime" && (
             <RuntimePanel projectPath={projectPath} />
           )}
-          {leftTab === "agentview" && (
-            <div className="flex-1 overflow-hidden">
-              <AgentView />
-            </div>
-          )}
         </div>
 
         {/* Left resize handle */}
@@ -308,9 +320,9 @@ function App() {
 
         {/* ===== CENTER: EDITOR + BOTTOM PANEL ===== */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Editor */}
+          {/* Center content */}
           <div style={{ flex: bottomPanel ? "1 1 0%" : "1 1 100%", minHeight: 0, overflow: "hidden" }}>
-            <Editor />
+            {centerView === "editor" ? <Editor /> : <AgentView />}
           </div>
 
           {/* Bottom Panel (Terminal / Output) */}
