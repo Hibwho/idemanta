@@ -7,3 +7,12 @@ dist/
 logs/
 *.pid
 .vscode/
+
+# Local tool configs (not part of the project)
+.claude/
+.claude-flow/
+.swarm/
+.ruflo/
+.mcp.json
+CLAUDE.md
+PROJECT.md
