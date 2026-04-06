@@ -112,6 +112,8 @@ export async function disableMcpPlugin(plugin: Plugin): Promise<void> {
   }
 }
 
+const PLUGINS_CONFIG = "~/.idemanta/plugins.json";
+
 /**
  * Save plugin config
  */

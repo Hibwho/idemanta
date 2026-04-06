@@ -19,7 +19,7 @@ function getFileIcon(name: string, isOpen?: boolean) {
   if (isOpen) return <FolderOpen size={14} className="text-[var(--yellow)]" />;
 
   const ext = name.split(".").pop()?.toLowerCase() || "";
-  const iconMap: Record<string, JSX.Element> = {
+  const iconMap: Record<string, React.ReactNode> = {
     ts:   <FileCode size={14} className="text-blue-400" />,
     tsx:  <FileCode size={14} className="text-blue-400" />,
     js:   <FileCode size={14} className="text-yellow-400" />,

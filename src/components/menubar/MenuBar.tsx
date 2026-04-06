@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
-interface MenuItem {
+type MenuItem = {
   label: string;
   shortcut?: string;
   separator?: boolean;
   disabled?: boolean;
   action?: () => void;
-}
+} | {
+  separator: true;
+  label?: string;
+};
 
 interface Menu {
   label: string;

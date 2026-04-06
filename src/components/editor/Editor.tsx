@@ -107,6 +107,7 @@ export function Editor() {
   const { openFiles, activeFilePath, setActiveFile, closeFile, updateFileContent } =
     useEditorStore();
   const [showMinimap, setShowMinimap] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const isMarkdown = false;
 
   const activeFile = openFiles.find((f) => f.path === activeFilePath);

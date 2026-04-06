@@ -14,7 +14,7 @@ const categoryConfig: Record<string, { icon: typeof Server; label: string; color
   tool:  { icon: Wrench,  label: "Tool",   color: "var(--yellow)" },
 };
 
-function StoreItemCard({ item, onInstalled }: { item: StoreItem; onInstalled?: () => void }) {
+function StoreItemCard({ item, onInstalled: _onInstalled }: { item: StoreItem; onInstalled?: () => void }) {
   const { setInstalled, setInstalling, installing, addItem, items } = useStoreStore();
   const isInstalling = installing.has(item.id);
   // Check store for installed status (covers GitHub results too)

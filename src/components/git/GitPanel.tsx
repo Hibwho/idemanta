@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   GitBranch, RefreshCw, Plus, Minus, FileCode,
-  Check, Upload, Loader2, FileDiff,
+  Check, Loader2, FileDiff,
 } from "lucide-react";
 
 interface GitFile {

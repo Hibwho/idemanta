@@ -55,7 +55,8 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
           ? `You are ${member.name}, the lead orchestrator for "${name}". Project: ${description}. Coordinate the team, break down tasks, track progress. Start by creating a plan.`
           : `You are ${member.name}, specialized in ${member.speciality}. Project "${name}": ${description}. Wait for instructions from the Lead or user. Introduce yourself briefly.`;
 
-        const routing = routeModel(member.role === "orchestrator" ? description : member.speciality);
+        // Route model for future use
+        routeModel(member.role === "orchestrator" ? description : member.speciality);
 
         const info = await invoke<{
           id: string; name: string; role: string; status: string; working_dir: string;
@@ -72,6 +73,7 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
           role: member.speciality,
           status: "running", workingDir: info.working_dir,
           messages: [], tokensUsed: 0, filesModified: [],
+          backend: "claude",
         });
 
         const { addAgentToProject } = useProjectStore.getState();

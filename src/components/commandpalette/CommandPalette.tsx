@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Search, FolderOpen, Bot, Plus, Settings, Terminal,
-  FileCode, Users, FolderKanban, Store, GitBranch,
-  Play, Pause, Square, PanelRightOpen, PanelRightClose,
-  Code2, Keyboard,
+  FileCode, Users, Store, GitBranch,
+  PanelRightOpen,
 } from "lucide-react";
 
 interface Command {

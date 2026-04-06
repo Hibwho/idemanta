@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Package, Download, Check, Loader2, RefreshCw,
-  Plus, Trash2, FolderOpen, Play, Box,
+  Plus, Trash2, Box,
 } from "lucide-react";
 
 interface Runtime {
