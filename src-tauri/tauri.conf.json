@@ -15,7 +15,7 @@
         "title": "IDEManta",
         "width": 1400,
         "height": 900,
-        "decorations": false
+        "decorations": true
       }
     ],
     "security": {

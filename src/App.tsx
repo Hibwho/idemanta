@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { FileTree } from "./components/filetree/FileTree";
 import { Editor } from "./components/editor/Editor";
@@ -22,10 +22,10 @@ import { useEditorStore } from "./stores/editorStore";
 import { useSettingsStore } from "./stores/settingsStore";
 import {
   Bot, FolderKanban, FolderOpen, Code2,
-  Cpu, Zap, CircleDot, Settings, FileCode, Users,
+  Cpu, Zap, CircleDot, Settings, Users,
   Store, Files, PanelRightClose, PanelRightOpen,
   Search, GitBranch, Terminal, ScrollText,
-  PanelBottomClose, PanelBottomOpen, Bug, FileText,
+  PanelBottomClose, Bug, FileText,
   Package, MessageSquare,
 } from "lucide-react";
 import "./index.css";
@@ -64,6 +64,9 @@ function App() {
   const { addMessage, updateAgent, agents } = useAgentStore();
   const { toggleSettings } = useSettingsStore();
 
+  // Track streaming message IDs per agent for accumulation
+  const streamingMsgIds = useRef<Record<string, string>>({});
+
   useEffect(() => {
     const unlisten = listen<AgentEvent>("agent-event", (event) => {
       const { agent_id, event_type, data } = event.payload;
@@ -71,6 +74,8 @@ function App() {
       if (["system", "rate_limit_event", "ready"].includes(event_type)) {
         if (event_type === "ready") {
           updateAgent(agent_id, { status: "waiting" });
+          // Clear streaming tracker for this agent
+          delete streamingMsgIds.current[agent_id];
           const agentName = useAgentStore.getState().agents.find((a) => a.id === agent_id)?.name || "Agent";
           const notifId = crypto.randomUUID();
           setNotifications((prev) => [...prev, { id: notifId, text: `${agentName} finished`, type: "success" }]);
@@ -102,16 +107,51 @@ function App() {
 
       if (!content.trim()) return;
 
+      // Check if this agent is using Ollama (local backend)
+      const agentData = useAgentStore.getState().agents.find((a) => a.id === agent_id);
+      const isOllama = agentData?.backend === "ollama";
+
       if (event_type === "result") {
-        const agent = useAgentStore.getState().agents.find((a) => a.id === agent_id);
-        const lastMsg = agent?.messages[agent.messages.length - 1];
+        // For result events, replace the streaming message with the final content
+        const streamId = streamingMsgIds.current[agent_id];
+        if (streamId && isOllama) {
+          // The streaming message already has the full content, skip duplicate
+          delete streamingMsgIds.current[agent_id];
+          return;
+        }
+        // For Claude, check for duplicate
+        const lastMsg = agentData?.messages[agentData.messages.length - 1];
         if (lastMsg?.content === content) return;
       }
 
-      addMessage(agent_id, { id: crypto.randomUUID(), type: event_type, content, timestamp: Date.now() });
+      if (event_type === "assistant" && isOllama) {
+        // Accumulate streaming chunks into a single message
+        const existingId = streamingMsgIds.current[agent_id];
+        if (existingId) {
+          // Append to existing streaming message
+          const { agents: currentAgents } = useAgentStore.getState();
+          const currentAgent = currentAgents.find((a) => a.id === agent_id);
+          const existingMsg = currentAgent?.messages.find((m) => m.id === existingId);
+          if (existingMsg) {
+            const updatedContent = existingMsg.content + content;
+            useAgentStore.getState().updateAgent(agent_id, {
+              messages: currentAgent!.messages.map((m) =>
+                m.id === existingId ? { ...m, content: updatedContent } : m
+              ),
+            });
+            return;
+          }
+        }
+        // First chunk — create new message and track it
+        const msgId = crypto.randomUUID();
+        streamingMsgIds.current[agent_id] = msgId;
+        addMessage(agent_id, { id: msgId, type: event_type, content, timestamp: Date.now() });
+      } else {
+        addMessage(agent_id, { id: crypto.randomUUID(), type: event_type, content, timestamp: Date.now() });
+      }
 
       // Add to agent logs
-      const agentName = useAgentStore.getState().agents.find((a) => a.id === agent_id)?.name || agent_id.slice(0, 8);
+      const agentName = agentData?.name || agent_id.slice(0, 8);
       setAgentLogs((prev) => [...prev.slice(-200), {
         time: new Date().toLocaleTimeString(),
         agent: agentName,

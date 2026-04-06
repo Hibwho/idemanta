@@ -1,6 +1,6 @@
 import { Agent, useAgentStore } from "../../stores/agentStore";
 import { invoke } from "@tauri-apps/api/core";
-import { Square, Bot, Loader2 } from "lucide-react";
+import { Square, Bot, Loader2, Cloud, Cpu } from "lucide-react";
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
   starting: { color: "var(--yellow)", bg: "var(--yellow-dim)", label: "Starting" },
@@ -50,7 +50,18 @@ export function AgentCard({ agent }: { agent: Agent }) {
           </div>
           <div className="min-w-0">
             <div className="text-[13px] font-medium truncate">{agent.name}</div>
-            <div className="text-[10px] text-[var(--text-muted)] truncate max-w-[160px]">{agent.role}</div>
+            <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)]">
+              <span className="truncate max-w-[120px]">{agent.role}</span>
+              {agent.backend === "ollama" ? (
+                <span className="flex items-center gap-0.5 px-1 py-0 rounded bg-[var(--green-dim)] text-[var(--green)] text-[8px] shrink-0">
+                  <Cpu size={7} /> local
+                </span>
+              ) : (
+                <span className="flex items-center gap-0.5 px-1 py-0 rounded bg-[var(--accent-glow)] text-[var(--accent)] text-[8px] shrink-0">
+                  <Cloud size={7} /> cloud
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">

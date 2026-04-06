@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAgentStore } from "../../stores/agentStore";
+import { useAgentStore, type AgentBackend } from "../../stores/agentStore";
 import { useProjectStore } from "../../stores/projectStore";
 import { AgentCard } from "./AgentCard";
 import { AgentOutput } from "./AgentOutput";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { Plus, Crown } from "lucide-react";
+import { Plus, Crown, Cloud, Cpu } from "lucide-react";
 
 export function AgentPanel({ projectPath }: { projectPath: string }) {
   const { agents, addAgent, selectedAgentId } = useAgentStore();
   const { projects } = useProjectStore();
-  const { autoApprove } = useSettingsStore();
+  const { autoApprove, ollamaUrl, ollamaModel } = useSettingsStore();
   const [showNewAgent, setShowNewAgent] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSpeciality, setNewSpeciality] = useState("");
+  const [newBackend, setNewBackend] = useState<AgentBackend>("claude");
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
 
@@ -29,26 +30,39 @@ export function AgentPanel({ projectPath }: { projectPath: string }) {
       : `Your name is ${newName}. Introduce yourself briefly.`;
 
     try {
-      const info = await invoke<{
-        id: string; name: string; role: string; status: string; working_dir: string;
-      }>("spawn_agent", {
-        name: newName,
-        role: newSpeciality.trim() || "general",
-        workingDir: projectPath,
-        initialPrompt: systemPrompt,
-        autoApprove,
-      });
+      let info: { id: string; name: string; role: string; status: string; working_dir: string };
+
+      if (newBackend === "ollama") {
+        info = await invoke("spawn_local_agent", {
+          name: newName,
+          role: newSpeciality.trim() || "general",
+          workingDir: projectPath,
+          initialPrompt: systemPrompt,
+          ollamaUrl,
+          ollamaModel,
+        });
+      } else {
+        info = await invoke("spawn_agent", {
+          name: newName,
+          role: newSpeciality.trim() || "general",
+          workingDir: projectPath,
+          initialPrompt: systemPrompt,
+          autoApprove,
+        });
+      }
 
       addAgent({
         id: info.id, name: newName,
         role: newSpeciality.trim() || "general",
         status: "running", workingDir: info.working_dir,
         messages: [], tokensUsed: 0, filesModified: [],
+        backend: newBackend,
       });
 
       setShowNewAgent(false);
       setNewName("");
       setNewSpeciality("");
+      setNewBackend("claude");
     } catch (e) {
       console.error("Failed to spawn agent:", e);
     }
@@ -88,6 +102,31 @@ export function AgentPanel({ projectPath }: { projectPath: string }) {
             value={newSpeciality}
             onChange={(e) => setNewSpeciality(e.target.value)}
           />
+          {/* Backend selector */}
+          <div className="flex gap-1.5 mb-2">
+            <button
+              onClick={() => setNewBackend("claude")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium cursor-pointer transition-all border ${
+                newBackend === "claude"
+                  ? "bg-[var(--accent-glow)] border-[var(--accent)]/40 text-[var(--accent)]"
+                  : "bg-[var(--bg-primary)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--accent)]/20"
+              }`}
+            >
+              <Cloud size={12} />
+              Claude
+            </button>
+            <button
+              onClick={() => setNewBackend("ollama")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium cursor-pointer transition-all border ${
+                newBackend === "ollama"
+                  ? "bg-[var(--green-dim)] border-[var(--green)]/40 text-[var(--green)]"
+                  : "bg-[var(--bg-primary)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--green)]/20"
+              }`}
+            >
+              <Cpu size={12} />
+              Local (Ollama)
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleSpawn}

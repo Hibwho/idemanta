@@ -1,6 +1,6 @@
 import { useAgentStore } from "../../stores/agentStore";
 import { useProjectStore } from "../../stores/projectStore";
-import { Bot, Crown, Loader2, MessageSquare, Zap, Pause } from "lucide-react";
+import { Bot, Crown, Loader2, MessageSquare, Zap, Pause, Cloud, Cpu } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   starting: "var(--yellow)",
@@ -19,7 +19,7 @@ const statusBg: Record<string, string> = {
 };
 
 function AgentAvatar({ agent, isOrchestrator, onClick }: {
-  agent: { id: string; name: string; role: string; status: string; messages: unknown[] };
+  agent: { id: string; name: string; role: string; status: string; messages: unknown[]; backend?: string };
   isOrchestrator: boolean;
   onClick: () => void;
 }) {
@@ -60,7 +60,14 @@ function AgentAvatar({ agent, isOrchestrator, onClick }: {
       {/* Name */}
       <div className="text-center">
         <div className="text-[12px] font-semibold text-[var(--text-primary)]">{agent.name}</div>
-        <div className="text-[10px] text-[var(--text-muted)] truncate max-w-[140px]">{agent.role}</div>
+        <div className="flex items-center justify-center gap-1 text-[10px] text-[var(--text-muted)]">
+          <span className="truncate max-w-[100px]">{agent.role}</span>
+          {agent.backend === "ollama" ? (
+            <Cpu size={9} className="text-[var(--green)] shrink-0" />
+          ) : (
+            <Cloud size={9} className="text-[var(--accent)] shrink-0" />
+          )}
+        </div>
       </div>
 
       {/* Speech bubble */}

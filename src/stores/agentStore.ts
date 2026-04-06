@@ -7,6 +7,8 @@ export interface AgentMessage {
   timestamp: number;
 }
 
+export type AgentBackend = "claude" | "ollama";
+
 export interface Agent {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface Agent {
   messages: AgentMessage[];
   tokensUsed: number;
   filesModified: string[];
+  backend: AgentBackend;
 }
 
 interface AgentStore {

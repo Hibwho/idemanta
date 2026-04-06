@@ -8,6 +8,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::io::{Read, Write};
+use futures::StreamExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInfo {
@@ -25,9 +26,17 @@ pub struct AgentEvent {
     pub data: serde_json::Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OllamaChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
 pub struct AgentProcess {
     pub info: AgentInfo,
     pub session_id: Option<String>,
+    pub backend: String, // "claude" or "ollama"
+    pub ollama_history: Vec<OllamaChatMessage>,
 }
 
 pub struct AppState {
@@ -133,6 +142,326 @@ fn spawn_claude_stream(
     });
 }
 
+/// Stream a response from Ollama API and emit as agent-events
+fn spawn_ollama_stream(
+    app: tauri::AppHandle,
+    agents: Arc<Mutex<HashMap<String, AgentProcess>>>,
+    agent_id: String,
+    ollama_url: String,
+    model: String,
+    messages: Vec<OllamaChatMessage>,
+) {
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let url = format!("{}/api/chat", ollama_url.trim_end_matches('/'));
+
+        let body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "stream": true
+        });
+
+        let response = match client.post(&url).json(&body).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                let event = AgentEvent {
+                    agent_id: agent_id.clone(),
+                    event_type: "error".to_string(),
+                    data: serde_json::json!({"error": format!("Ollama connection failed: {}", e)}),
+                };
+                let _ = app.emit("agent-event", &event);
+                return;
+            }
+        };
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body_text = response.text().await.unwrap_or_default();
+            let event = AgentEvent {
+                agent_id: agent_id.clone(),
+                event_type: "error".to_string(),
+                data: serde_json::json!({"error": format!("Ollama error {}: {}", status, body_text)}),
+            };
+            let _ = app.emit("agent-event", &event);
+            return;
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut full_response = String::new();
+        let mut buffer = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(bytes) => {
+                    buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+                    // Ollama streams one JSON object per line
+                    while let Some(newline_pos) = buffer.find('\n') {
+                        let line = buffer[..newline_pos].to_string();
+                        buffer = buffer[newline_pos + 1..].to_string();
+
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+
+                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                            if let Some(content) = json
+                                .get("message")
+                                .and_then(|m| m.get("content"))
+                                .and_then(|c| c.as_str())
+                            {
+                                full_response.push_str(content);
+
+                                // Emit streaming chunk as assistant message
+                                let event = AgentEvent {
+                                    agent_id: agent_id.clone(),
+                                    event_type: "assistant".to_string(),
+                                    data: serde_json::json!({
+                                        "message": {
+                                            "content": [{"type": "text", "text": content}]
+                                        }
+                                    }),
+                                };
+                                let _ = app.emit("agent-event", &event);
+                            }
+
+                            // Check if done
+                            if json.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
+                                // Emit final result
+                                let event = AgentEvent {
+                                    agent_id: agent_id.clone(),
+                                    event_type: "result".to_string(),
+                                    data: serde_json::json!({"result": full_response}),
+                                };
+                                let _ = app.emit("agent-event", &event);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    let event = AgentEvent {
+                        agent_id: agent_id.clone(),
+                        event_type: "error".to_string(),
+                        data: serde_json::json!({"error": format!("Stream error: {}", e)}),
+                    };
+                    let _ = app.emit("agent-event", &event);
+                    break;
+                }
+            }
+        }
+
+        // Save assistant response to conversation history
+        {
+            let mut agents_lock = agents.lock().await;
+            if let Some(agent) = agents_lock.get_mut(&agent_id) {
+                agent.ollama_history.push(OllamaChatMessage {
+                    role: "assistant".to_string(),
+                    content: full_response,
+                });
+            }
+        }
+
+        // Mark as ready
+        let event = AgentEvent {
+            agent_id: agent_id.clone(),
+            event_type: "ready".to_string(),
+            data: serde_json::json!({"status": "ready"}),
+        };
+        let _ = app.emit("agent-event", &event);
+    });
+}
+
+#[tauri::command]
+async fn spawn_local_agent(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    role: String,
+    working_dir: String,
+    initial_prompt: String,
+    ollama_url: String,
+    ollama_model: String,
+) -> Result<AgentInfo, String> {
+    let id = uuid::Uuid::new_v4().to_string();
+
+    let info = AgentInfo {
+        id: id.clone(),
+        name: name.clone(),
+        role: role.clone(),
+        status: "running".into(),
+        working_dir: working_dir.clone(),
+    };
+
+    let system_msg = OllamaChatMessage {
+        role: "system".to_string(),
+        content: format!(
+            "Your name is {}. You are specialized in: {}. You are a helpful coding assistant working in the directory: {}. Be concise and direct.",
+            name, role, working_dir
+        ),
+    };
+
+    let user_msg = OllamaChatMessage {
+        role: "user".to_string(),
+        content: initial_prompt.clone(),
+    };
+
+    let messages = vec![system_msg.clone(), user_msg.clone()];
+
+    let process = AgentProcess {
+        info: info.clone(),
+        session_id: None,
+        backend: "ollama".to_string(),
+        ollama_history: vec![system_msg, user_msg],
+    };
+
+    {
+        let mut agents = state.agents.lock().await;
+        agents.insert(id.clone(), process);
+    }
+
+    spawn_ollama_stream(
+        app,
+        state.agents.clone(),
+        id,
+        ollama_url,
+        ollama_model,
+        messages,
+    );
+
+    Ok(info)
+}
+
+#[tauri::command]
+async fn send_to_local_agent(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    agent_id: String,
+    message: String,
+    ollama_url: String,
+    ollama_model: String,
+) -> Result<(), String> {
+    let messages = {
+        let mut agents = state.agents.lock().await;
+        let agent = agents.get_mut(&agent_id).ok_or("Agent not found")?;
+
+        if agent.backend != "ollama" {
+            return Err("Agent is not an Ollama agent".into());
+        }
+
+        agent.info.status = "running".into();
+
+        // Add user message to history
+        agent.ollama_history.push(OllamaChatMessage {
+            role: "user".to_string(),
+            content: message,
+        });
+
+        agent.ollama_history.clone()
+    };
+
+    spawn_ollama_stream(
+        app,
+        state.agents.clone(),
+        agent_id,
+        ollama_url,
+        ollama_model,
+        messages,
+    );
+
+    Ok(())
+}
+
+/// Quick one-shot classification: returns "SIMPLE" or "COMPLEX"
+#[tauri::command]
+async fn route_message(
+    ollama_url: String,
+    ollama_model: String,
+    message: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/chat", ollama_url.trim_end_matches('/'));
+
+    let body = serde_json::json!({
+        "model": ollama_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a task router. Classify the user's request as either SIMPLE or COMPLEX.\n\nSIMPLE tasks: quick questions, syntax help, formatting, small snippets, explanations of concepts, file reading, simple edits, renaming variables, adding comments.\n\nCOMPLEX tasks: multi-file refactoring, debugging with context, writing new features, architecture decisions, test writing, anything requiring reading/modifying multiple files, long reasoning chains.\n\nRespond with ONLY the word SIMPLE or COMPLEX, nothing else."
+            },
+            {
+                "role": "user",
+                "content": message
+            }
+        ],
+        "stream": false
+    });
+
+    let response = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Ollama connection failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Ollama error: {}", response.status()));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let content = json
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .unwrap_or("COMPLEX")
+        .trim()
+        .to_uppercase();
+
+    if content.contains("SIMPLE") {
+        Ok("SIMPLE".to_string())
+    } else {
+        Ok("COMPLEX".to_string())
+    }
+}
+
+/// Test Ollama connection
+#[tauri::command]
+async fn test_ollama_connection(ollama_url: String) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/tags", ollama_url.trim_end_matches('/'));
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Ollama returned status: {}", response.status()));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse: {}", e))?;
+
+    // Extract model names
+    let models: Vec<String> = json
+        .get("models")
+        .and_then(|m| m.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(serde_json::to_string(&models).unwrap_or_else(|_| "[]".to_string()))
+}
+
 #[tauri::command]
 async fn spawn_agent(
     app: tauri::AppHandle,
@@ -156,6 +485,8 @@ async fn spawn_agent(
     let process = AgentProcess {
         info: info.clone(),
         session_id: None,
+        backend: "claude".to_string(),
+        ollama_history: vec![],
     };
 
     {
@@ -470,6 +801,10 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             spawn_agent,
+            spawn_local_agent,
+            send_to_local_agent,
+            route_message,
+            test_ollama_connection,
             list_agents,
             stop_agent,
             send_to_agent,

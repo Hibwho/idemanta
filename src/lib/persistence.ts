@@ -9,6 +9,9 @@ const KEYS = {
   rightPanelOpen: "idemanta-right-panel-open",
   authMode: "idemanta-auth-mode",
   autoApprove: "idemanta-auto-approve",
+  ollamaUrl: "idemanta-ollama-url",
+  ollamaModel: "idemanta-ollama-model",
+  orchestratorEnabled: "idemanta-orchestrator-enabled",
 };
 
 export function saveState(key: keyof typeof KEYS, value: string | number | boolean) {

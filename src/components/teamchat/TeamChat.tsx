@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAgentStore } from "../../stores/agentStore";
 import { useSettingsStore } from "../../stores/settingsStore";
-import { Send, Loader2, User, Bot, Users, AtSign } from "lucide-react";
+import { Send, Loader2, User, Users, AtSign, Zap } from "lucide-react";
 
 interface TeamMessage {
   id: string;
@@ -20,7 +20,6 @@ export function TeamChat() {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
   const { agents, addMessage: addAgentMessage, updateAgent } = useAgentStore();
-  const { autoApprove } = useSettingsStore();
 
   // Collect new agent messages into team chat
   useEffect(() => {
@@ -74,8 +73,12 @@ export function TeamChat() {
     inputRef.current?.focus();
   };
 
+  const [routingDecision, setRoutingDecision] = useState<string | null>(null);
+
   const handleSend = async () => {
     if (!input.trim()) return;
+
+    const { orchestratorEnabled, ollamaUrl, ollamaModel } = useSettingsStore.getState();
 
     // Add user message to team chat
     const userMsg: TeamMessage = {
@@ -90,42 +93,118 @@ export function TeamChat() {
     // Detect which agent(s) to send to
     const mentionedNames = input.match(/@(\w+)/g)?.map((m) => m.slice(1).toLowerCase()) || [];
     const cleanMessage = input.replace(/@\w+/g, "").trim();
+    const messageToSend = cleanMessage || input;
 
+    // If @mention was used, skip orchestrator and send directly
     let targetAgents = agents.filter((a) =>
       mentionedNames.some((name) => a.name.toLowerCase().includes(name))
     );
 
-    // If no @mention, send to all active agents or the first one
-    if (targetAgents.length === 0 && agents.length > 0) {
-      // Send to the first active agent
-      const active = agents.find((a) => a.status === "waiting" || a.status === "running");
-      if (active) targetAgents = [active];
+    if (targetAgents.length > 0) {
+      // Direct mention — bypass orchestrator
+      for (const agent of targetAgents) {
+        await sendToAgent(agent, messageToSend);
+      }
+      setInput("");
+      setShowMentions(false);
+      return;
     }
 
-    for (const agent of targetAgents) {
-      // Add user message to the agent's individual chat too
-      addAgentMessage(agent.id, {
-        id: crypto.randomUUID(),
-        type: "user",
-        content: cleanMessage || input,
-        timestamp: Date.now(),
-      });
-
-      updateAgent(agent.id, { status: "running" });
+    // Orchestrator routing
+    if (orchestratorEnabled && agents.length > 0) {
+      setRoutingDecision("routing");
 
       try {
-        await invoke("send_to_agent", {
-          agentId: agent.id,
-          message: cleanMessage || input,
-          autoApprove,
+        const decision = await invoke<string>("route_message", {
+          ollamaUrl,
+          ollamaModel,
+          message: messageToSend,
         });
+
+        setRoutingDecision(decision);
+
+        // Add routing info to team chat
+        const routeMsg: TeamMessage = {
+          id: crypto.randomUUID(),
+          agentId: "__orchestrator__",
+          agentName: "Orchestrator",
+          content: decision === "SIMPLE"
+            ? "Routed to local LLM (simple task)"
+            : "Routed to Claude (complex task)",
+          timestamp: Date.now(),
+        };
+        setMessages((prev) => [...prev, routeMsg]);
+
+        if (decision === "SIMPLE") {
+          // Find a local Ollama agent, or the first available
+          const localAgent = agents.find((a) => a.backend === "ollama" && (a.status === "waiting" || a.status === "running"));
+          if (localAgent) {
+            await sendToAgent(localAgent, messageToSend);
+          } else {
+            // Fallback: find any available agent
+            const anyAgent = agents.find((a) => a.status === "waiting" || a.status === "running");
+            if (anyAgent) await sendToAgent(anyAgent, messageToSend);
+          }
+        } else {
+          // COMPLEX — send to Claude agent
+          const claudeAgent = agents.find((a) => a.backend === "claude" && (a.status === "waiting" || a.status === "running"));
+          if (claudeAgent) {
+            await sendToAgent(claudeAgent, messageToSend);
+          } else {
+            // Fallback: find any available agent
+            const anyAgent = agents.find((a) => a.status === "waiting" || a.status === "running");
+            if (anyAgent) await sendToAgent(anyAgent, messageToSend);
+          }
+        }
+
+        // Clear routing after 3s
+        setTimeout(() => setRoutingDecision(null), 3000);
       } catch (e) {
-        console.error(`Failed to send to ${agent.name}:`, e);
+        console.error("Routing failed, falling back to first agent:", e);
+        setRoutingDecision(null);
+        const fallback = agents.find((a) => a.status === "waiting" || a.status === "running");
+        if (fallback) await sendToAgent(fallback, messageToSend);
       }
+    } else {
+      // No orchestrator — send to first available agent
+      const active = agents.find((a) => a.status === "waiting" || a.status === "running");
+      if (active) await sendToAgent(active, messageToSend);
     }
 
     setInput("");
     setShowMentions(false);
+  };
+
+  const sendToAgent = async (agent: typeof agents[0], message: string) => {
+    const { autoApprove, ollamaUrl, ollamaModel } = useSettingsStore.getState();
+
+    addAgentMessage(agent.id, {
+      id: crypto.randomUUID(),
+      type: "user",
+      content: message,
+      timestamp: Date.now(),
+    });
+
+    updateAgent(agent.id, { status: "running" });
+
+    try {
+      if (agent.backend === "ollama") {
+        await invoke("send_to_local_agent", {
+          agentId: agent.id,
+          message,
+          ollamaUrl,
+          ollamaModel,
+        });
+      } else {
+        await invoke("send_to_agent", {
+          agentId: agent.id,
+          message,
+          autoApprove,
+        });
+      }
+    } catch (e) {
+      console.error(`Failed to send to ${agent.name}:`, e);
+    }
   };
 
   const filteredMentions = agents.filter((a) =>
@@ -198,7 +277,15 @@ export function TeamChat() {
 
         {messages.map((msg) => (
           <div key={msg.id} className="animate-slide-in">
-            {msg.agentId === null ? (
+            {msg.agentId === "__orchestrator__" ? (
+              // Orchestrator routing message
+              <div className="flex justify-center my-1">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--bg-tertiary)] text-[10px] text-[var(--text-muted)]">
+                  <Zap size={10} className="text-[var(--yellow)]" />
+                  {msg.content}
+                </div>
+              </div>
+            ) : msg.agentId === null ? (
               // User message
               <div className="flex gap-2.5 justify-end">
                 <div className="bg-[var(--accent)] text-white rounded-2xl rounded-br-md px-3.5 py-2 max-w-[70%] text-[12px] leading-relaxed whitespace-pre-wrap shadow-sm">
@@ -270,6 +357,14 @@ export function TeamChat() {
         </div>
       )}
 
+      {/* Routing indicator */}
+      {routingDecision === "routing" && (
+        <div className="px-4 py-1.5 bg-[var(--bg-tertiary)] border-t border-[var(--border)] flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+          <Loader2 size={12} className="animate-spin text-[var(--accent)]" />
+          Orchestrator is analyzing the task...
+        </div>
+      )}
+
       {/* Input */}
       <div className="p-3 border-t border-[var(--border)] bg-[var(--bg-secondary)]">
         <div className="flex gap-1.5 items-center bg-[var(--bg-primary)] rounded-xl border border-[var(--border)] focus-within:border-[var(--accent)] transition-all px-1.5">
@@ -306,6 +401,12 @@ export function TeamChat() {
         </div>
         <div className="flex items-center gap-2 mt-1.5 px-1 text-[10px] text-[var(--text-muted)]">
           <span>Type <kbd className="px-1 py-0.5 rounded bg-[var(--bg-tertiary)] text-[9px] font-mono">@</kbd> to mention an agent</span>
+          {useSettingsStore.getState().orchestratorEnabled && (
+            <span className="flex items-center gap-1 ml-auto text-[var(--accent)]">
+              <Zap size={9} />
+              Smart routing on
+            </span>
+          )}
         </div>
       </div>
     </div>

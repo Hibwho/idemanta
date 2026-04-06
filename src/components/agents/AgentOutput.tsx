@@ -24,7 +24,12 @@ export function AgentOutput({ agent }: { agent: Agent }) {
     addMessage(agent.id, { id: crypto.randomUUID(), type: "user", content: input, timestamp: Date.now() });
     updateAgent(agent.id, { status: "running" });
     try {
-      await invoke("send_to_agent", { agentId: agent.id, message: input, autoApprove });
+      if (agent.backend === "ollama") {
+        const { ollamaUrl, ollamaModel } = useSettingsStore.getState();
+        await invoke("send_to_local_agent", { agentId: agent.id, message: input, ollamaUrl, ollamaModel });
+      } else {
+        await invoke("send_to_agent", { agentId: agent.id, message: input, autoApprove });
+      }
     } catch (e) { console.error("Failed to send:", e); }
     setInput("");
   };
