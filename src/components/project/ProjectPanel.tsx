@@ -28,10 +28,12 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
   const [isCreating, setIsCreating] = useState(false);
   const [swarmMode, setSwarmMode] = useState(false);
   const [planPath, setPlanPath] = useState("");
+  const [error, setError] = useState("");
 
   const handleCreate = async () => {
     if (!name.trim() || !description.trim() || isCreating) return;
     setIsCreating(true);
+    setError("");
 
     const id = crypto.randomUUID();
     const memoryNamespace = `project-${name.toLowerCase().replace(/\s+/g, "-")}`;
@@ -47,7 +49,7 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
       try {
         planContent = await invoke<string>("read_board", { boardPath: fullPlanPath });
       } catch {
-        console.error("Cannot read plan file at", fullPlanPath);
+        setError("Cannot read plan file at: " + fullPlanPath);
         setIsCreating(false);
         return;
       }
@@ -55,7 +57,7 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
       // 2. Ask Ollama to analyze the plan
       const tasks = await analyzePlan(planContent, ollamaUrl, ollamaModel);
       if (tasks.length === 0) {
-        console.error("Ollama returned no tasks from plan");
+        setError("Ollama returned no tasks. Check Ollama is running and model is set in Settings.");
         setIsCreating(false);
         return;
       }
@@ -346,6 +348,12 @@ YOUR WORKFLOW:
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="text-[11px] text-[var(--red)] bg-[var(--red-dim)] rounded-md px-2.5 py-1.5 mb-2">
+              {error}
             </div>
           )}
 

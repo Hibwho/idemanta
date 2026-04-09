@@ -187,28 +187,47 @@ Rules:
 Example output:
 [{"id":"task-1","title":"Backend FastAPI setup","role":"backend","depends_on":[],"plan_ref":"Task 1"}]`;
 
-  const response = await fetch(`${ollamaUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: ollamaModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: planContent },
-      ],
-      stream: false,
-      format: "json",
-    }),
-  });
+  // Truncate plan to task headers only to fit in context window
+  const taskSummary = planContent
+    .split("\n")
+    .filter((line) => /^###?\s+Task\s+\d+/.test(line) || /^\*\*Files:\*\*/.test(line))
+    .join("\n");
 
-  const data = await response.json();
-  const content = data.message?.content || "[]";
+  const planToSend = taskSummary.length > 100 ? taskSummary : planContent.slice(0, 8000);
 
   try {
-    const parsed = JSON.parse(content);
+    const response = await fetch(`${ollamaUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: ollamaModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: planToSend },
+        ],
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Ollama HTTP error:", response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const content = data.message?.content || "[]";
+
+    // Extract JSON array from response (Ollama may wrap it in markdown)
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error("Ollama returned no JSON array:", content);
+      return [];
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
     return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    console.error("Ollama returned invalid JSON:", content);
+  } catch (e) {
+    console.error("analyzePlan failed:", e);
     return [];
   }
 }
