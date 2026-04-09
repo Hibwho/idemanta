@@ -159,11 +159,6 @@ export function AgentPanel({ projectPath }: { projectPath: string }) {
           <>
             {/* Project groups */}
             {projects.filter((p) => p.agents.length > 0).map((project) => {
-              const projectAgents = agents.filter((a) =>
-                project.agents.some((pa) => pa.agentId === a.id)
-              );
-              if (projectAgents.length === 0) return null;
-
               return (
                 <div key={project.id} className="mb-2">
                   {/* Project header */}
@@ -186,9 +181,27 @@ export function AgentPanel({ projectPath }: { projectPath: string }) {
                       {project.status}
                     </span>
                   </div>
-                  {projectAgents.map((agent) => (
-                    <AgentCard key={agent.id} agent={agent} />
-                  ))}
+                  {project.agents.map((pa) => {
+                    const agent = agents.find((a) => a.id === pa.agentId);
+                    if (agent) {
+                      return <AgentCard key={agent.id} agent={agent} />;
+                    }
+                    // Agent not yet in store — show placeholder
+                    return (
+                      <div
+                        key={pa.agentId}
+                        className="flex items-center gap-2 px-3 py-2 mx-1 rounded-md"
+                      >
+                        <div className="w-2 h-2 rounded-full bg-[var(--yellow)] animate-pulse" />
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          {pa.name}
+                        </span>
+                        <span className="text-[9px] text-[var(--text-muted)]/60 ml-auto">
+                          starting...
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}

@@ -159,3 +159,100 @@ export function planProjectTeam(description: string): SwarmAgent[] {
 
   return team;
 }
+
+/**
+ * Ask Ollama to analyze a plan.md and extract structured tasks with roles.
+ * Returns a structured list of tasks ready for board.json.
+ */
+export async function analyzePlan(
+  planContent: string,
+  ollamaUrl: string,
+  ollamaModel: string,
+): Promise<Array<{ id: string; title: string; role: string; depends_on: string[]; plan_ref: string }>> {
+  const systemPrompt = `You are a project manager AI. Analyze this implementation plan and extract tasks.
+
+For each task, determine:
+- id: "task-N" format
+- title: short description
+- role: one of "backend", "frontend", "devops", "qa", "fullstack"
+- depends_on: list of task IDs this task depends on
+- plan_ref: "Task N" reference from the plan
+
+Rules:
+- Frontend tasks can start in parallel with backend if they don't need the API
+- DevOps tasks (Docker, Compose) depend on the code being written
+- QA/review tasks depend on implementation being done
+- Return ONLY a valid JSON array, no markdown, no explanation.
+
+Example output:
+[{"id":"task-1","title":"Backend FastAPI setup","role":"backend","depends_on":[],"plan_ref":"Task 1"}]`;
+
+  const response = await fetch(`${ollamaUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: ollamaModel,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: planContent },
+      ],
+      stream: false,
+      format: "json",
+    }),
+  });
+
+  const data = await response.json();
+  const content = data.message?.content || "[]";
+
+  try {
+    const parsed = JSON.parse(content);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    console.error("Ollama returned invalid JSON:", content);
+    return [];
+  }
+}
+
+/**
+ * Derive which specialized agents to spawn based on the roles found in tasks.
+ */
+export function deriveAgentsFromTasks(
+  tasks: Array<{ role: string }>,
+): SwarmAgent[] {
+  const roles = new Set(tasks.map((t) => t.role));
+  const agents: SwarmAgent[] = [];
+
+  const roleConfig: Record<string, { name: string; speciality: string }> = {
+    backend: {
+      name: "Backend Dev",
+      speciality: "Python, FastAPI, SQLAlchemy, database design, API development, tests",
+    },
+    frontend: {
+      name: "Frontend Dev",
+      speciality: "React, TypeScript, Tailwind CSS, UI components, routing, state management",
+    },
+    devops: {
+      name: "DevOps",
+      speciality: "Docker, Docker Compose, Makefiles, CI/CD, infrastructure, deployment",
+    },
+    qa: {
+      name: "QA",
+      speciality: "Testing, code review, quality assurance, edge cases, security review",
+    },
+    fullstack: {
+      name: "Fullstack Dev",
+      speciality: "Full-stack development, both frontend and backend, integration",
+    },
+  };
+
+  for (const role of roles) {
+    const config = roleConfig[role] || { name: `${role} Dev`, speciality: role };
+    agents.push({
+      name: config.name,
+      role,
+      speciality: config.speciality,
+    });
+  }
+
+  return agents;
+}

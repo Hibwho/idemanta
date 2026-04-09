@@ -16,6 +16,9 @@ export interface Project {
   orchestratorId: string | null;
   memoryNamespace: string;
   createdAt: number;
+  boardPath: string | null;
+  planPath: string | null;
+  swarmMode: boolean;
 }
 
 interface ProjectStore {

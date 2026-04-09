@@ -792,6 +792,59 @@ async fn write_file_content(path: String, content: String) -> Result<(), String>
         .map_err(|e| format!("Failed to write file: {}", e))
 }
 
+#[tauri::command]
+async fn read_board(board_path: String) -> Result<String, String> {
+    std::fs::read_to_string(&board_path)
+        .map_err(|e| format!("Failed to read board: {}", e))
+}
+
+#[tauri::command]
+async fn write_board(board_path: String, content: String) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&board_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create board directory: {}", e))?;
+    }
+    std::fs::write(&board_path, &content)
+        .map_err(|e| format!("Failed to write board: {}", e))
+}
+
+#[tauri::command]
+async fn watch_board(app: tauri::AppHandle, board_path: String) -> Result<(), String> {
+    use tokio::time::{interval, Duration};
+
+    let path = board_path.clone();
+    tokio::spawn(async move {
+        let mut last_modified = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok();
+
+        let mut ticker = interval(Duration::from_secs(2));
+        loop {
+            ticker.tick().await;
+
+            let current_modified = std::fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .ok();
+
+            if current_modified != last_modified {
+                last_modified = current_modified;
+
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    let event = AgentEvent {
+                        agent_id: "board".to_string(),
+                        event_type: "board_updated".to_string(),
+                        data: serde_json::from_str(&content)
+                            .unwrap_or(serde_json::json!({})),
+                    };
+                    let _ = app.emit("agent-event", &event);
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -819,6 +872,9 @@ pub fn run() {
             get_dir_children,
             read_file_content,
             write_file_content,
+            read_board,
+            write_board,
+            watch_board,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

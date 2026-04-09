@@ -2,11 +2,14 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useProjectStore, Project } from "../../stores/projectStore";
 import { useAgentStore } from "../../stores/agentStore";
-import { planProjectTeam, initProjectMemory, routeModel } from "../../lib/ruflo";
+import { planProjectTeam, initProjectMemory, routeModel, analyzePlan, deriveAgentsFromTasks } from "../../lib/ruflo";
+import { generateInitialBoard } from "../../lib/board";
+import { SwarmOrchestrator } from "../../lib/orchestrator";
+import { ProjectBoard } from "./ProjectBoard";
 import { useSettingsStore } from "../../stores/settingsStore";
 import {
   Plus, Play, Pause, Users, FolderOpen,
-  Loader2, Crown, Bot, Trash2,
+  Loader2, Crown, Bot, Trash2, Cpu,
 } from "lucide-react";
 
 interface ProjectPanelProps {
@@ -17,12 +20,14 @@ interface ProjectPanelProps {
 export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProps) {
   const { projects, activeProjectId, addProject, setActiveProject, updateProject, removeProject } = useProjectStore();
   const { addAgent, selectAgent } = useAgentStore();
-  const { autoApprove } = useSettingsStore();
+  const { autoApprove, ollamaUrl, ollamaModel } = useSettingsStore();
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [workDir, setWorkDir] = useState(projectPath);
   const [isCreating, setIsCreating] = useState(false);
+  const [swarmMode, setSwarmMode] = useState(false);
+  const [planPath, setPlanPath] = useState("");
 
   const handleCreate = async () => {
     if (!name.trim() || !description.trim() || isCreating) return;
@@ -30,69 +35,183 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
 
     const id = crypto.randomUUID();
     const memoryNamespace = `project-${name.toLowerCase().replace(/\s+/g, "-")}`;
-    const team = planProjectTeam(description);
+    const projectDir = workDir || projectPath;
 
-    const project: Project = {
-      id, name, description,
-      workingDir: workDir || projectPath,
-      status: "running",
-      agents: [],
-      orchestratorId: null,
-      memoryNamespace,
-      createdAt: Date.now(),
-    };
+    if (swarmMode && planPath.trim()) {
+      // === SMART SWARM MODE ===
+      const boardFilePath = `${projectDir}/.plan/board.json`;
+      const fullPlanPath = planPath.startsWith("/") ? planPath : `${projectDir}/${planPath}`;
 
-    addProject(project);
-    setActiveProject(id);
-
-    // Init memory
-    try { await initProjectMemory(memoryNamespace); } catch {}
-
-    // Spawn team
-    for (const member of team) {
+      // 1. Read plan
+      let planContent: string;
       try {
-        const systemPrompt = member.role === "orchestrator"
-          ? `You are ${member.name}, the lead orchestrator for "${name}". Project: ${description}. Coordinate the team, break down tasks, track progress. Start by creating a plan.`
-          : `You are ${member.name}, specialized in ${member.speciality}. Project "${name}": ${description}. Wait for instructions from the Lead or user. Introduce yourself briefly.`;
+        planContent = await invoke<string>("read_board", { boardPath: fullPlanPath });
+      } catch {
+        console.error("Cannot read plan file at", fullPlanPath);
+        setIsCreating(false);
+        return;
+      }
 
-        // Route model for future use
-        routeModel(member.role === "orchestrator" ? description : member.speciality);
+      // 2. Ask Ollama to analyze the plan
+      const tasks = await analyzePlan(planContent, ollamaUrl, ollamaModel);
+      if (tasks.length === 0) {
+        console.error("Ollama returned no tasks from plan");
+        setIsCreating(false);
+        return;
+      }
 
-        const info = await invoke<{
-          id: string; name: string; role: string; status: string; working_dir: string;
-        }>("spawn_agent", {
-          name: member.name,
-          role: member.role,
-          workingDir: workDir || projectPath,
-          initialPrompt: systemPrompt,
-          autoApprove,
-        });
+      // 3. Derive agents from tasks
+      const agentSpecs = deriveAgentsFromTasks(tasks);
 
-        addAgent({
-          id: info.id, name: member.name,
-          role: member.speciality,
-          status: "running", workingDir: info.working_dir,
-          messages: [], tokensUsed: 0, filesModified: [],
-          backend: "claude",
-        });
+      // 4. Create project
+      const project: Project = {
+        id, name, description,
+        workingDir: projectDir,
+        status: "running",
+        agents: [],
+        orchestratorId: null,
+        memoryNamespace,
+        createdAt: Date.now(),
+        boardPath: boardFilePath,
+        planPath: fullPlanPath,
+        swarmMode: true,
+      };
+      addProject(project);
+      setActiveProject(id);
 
-        const { addAgentToProject } = useProjectStore.getState();
-        addAgentToProject(id, { agentId: info.id, name: member.name, role: member.role });
+      try { await initProjectMemory(memoryNamespace); } catch {}
 
-        if (member.role === "orchestrator") {
-          updateProject(id, { orchestratorId: info.id });
+      // 5. Spawn Claude agents
+      const spawnedAgents: Array<{ id: string; name: string; role: string }> = [];
+
+      for (const spec of agentSpecs) {
+        try {
+          const systemPrompt = `You are ${spec.name}, specialized in ${spec.speciality}.
+Project: "${name}" — ${description}
+
+YOUR WORKFLOW:
+1. Wait for task instructions (they will reference the plan)
+2. Read the plan file at ${fullPlanPath} for full task details
+3. Implement the task following the plan exactly
+4. When done, update ${boardFilePath}:
+   - Set your task status to "done" and completed_at to current timestamp
+   - Set your agent status to "idle" and current_task to null
+5. Commit your work
+6. Wait for the next task`;
+
+          const info = await invoke<{
+            id: string; name: string; role: string; status: string; working_dir: string;
+          }>("spawn_agent", {
+            name: spec.name,
+            role: spec.role,
+            workingDir: projectDir,
+            initialPrompt: systemPrompt,
+            autoApprove,
+          });
+
+          addAgent({
+            id: info.id, name: spec.name,
+            role: spec.speciality,
+            status: "running", workingDir: info.working_dir,
+            messages: [], tokensUsed: 0, filesModified: [],
+            backend: "claude",
+          });
+
+          const { addAgentToProject } = useProjectStore.getState();
+          addAgentToProject(id, { agentId: info.id, name: spec.name, role: spec.role });
+          spawnedAgents.push({ id: info.id, name: spec.name, role: spec.role });
+        } catch (e) {
+          console.error(`Failed to spawn ${spec.name}:`, e);
         }
-      } catch (e) {
-        console.error(`Failed to spawn ${member.name}:`, e);
+      }
+
+      // 6. Generate initial board
+      const board = generateInitialBoard(name, tasks, spawnedAgents);
+      await invoke("write_board", {
+        boardPath: boardFilePath,
+        content: JSON.stringify(board, null, 2),
+      });
+
+      // 7. Start the Ollama orchestrator
+      const orchestrator = new SwarmOrchestrator({
+        boardPath: boardFilePath,
+        planContent,
+        ollamaUrl,
+        ollamaModel,
+        pollIntervalMs: 30000,
+      });
+      orchestrator.start();
+
+      // 8. Start board watcher for UI updates
+      await invoke("watch_board", { boardPath: boardFilePath });
+
+    } else {
+      // === LEGACY MODE ===
+      const team = planProjectTeam(description);
+
+      const project: Project = {
+        id, name, description,
+        workingDir: projectDir,
+        status: "running",
+        agents: [],
+        orchestratorId: null,
+        memoryNamespace,
+        createdAt: Date.now(),
+        boardPath: null,
+        planPath: null,
+        swarmMode: false,
+      };
+
+      addProject(project);
+      setActiveProject(id);
+
+      try { await initProjectMemory(memoryNamespace); } catch {}
+
+      for (const member of team) {
+        try {
+          const systemPrompt = member.role === "orchestrator"
+            ? `You are ${member.name}, the lead orchestrator for "${name}". Project: ${description}. Coordinate the team, break down tasks, track progress. Start by creating a plan.`
+            : `You are ${member.name}, specialized in ${member.speciality}. Project "${name}": ${description}. Wait for instructions from the Lead or user. Introduce yourself briefly.`;
+
+          routeModel(member.role === "orchestrator" ? description : member.speciality);
+
+          const info = await invoke<{
+            id: string; name: string; role: string; status: string; working_dir: string;
+          }>("spawn_agent", {
+            name: member.name,
+            role: member.role,
+            workingDir: projectDir,
+            initialPrompt: systemPrompt,
+            autoApprove,
+          });
+
+          addAgent({
+            id: info.id, name: member.name,
+            role: member.speciality,
+            status: "running", workingDir: info.working_dir,
+            messages: [], tokensUsed: 0, filesModified: [],
+            backend: "claude",
+          });
+
+          const { addAgentToProject } = useProjectStore.getState();
+          addAgentToProject(id, { agentId: info.id, name: member.name, role: member.role });
+
+          if (member.role === "orchestrator") {
+            updateProject(id, { orchestratorId: info.id });
+          }
+        } catch (e) {
+          console.error(`Failed to spawn ${member.name}:`, e);
+        }
       }
     }
 
     setShowNew(false);
     setName("");
     setDescription("");
+    setPlanPath("");
+    setSwarmMode(false);
     setIsCreating(false);
 
-    // Switch to agents tab to see the team
     if (onSwitchToAgents) onSwitchToAgents();
   };
 
@@ -182,8 +301,32 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
             />
           </div>
 
+          {/* Smart Swarm toggle */}
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => setSwarmMode(!swarmMode)}
+              className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-md cursor-pointer transition-all border ${
+                swarmMode
+                  ? "bg-[var(--green-dim)] border-[var(--green)]/40 text-[var(--green)]"
+                  : "bg-[var(--bg-primary)] border-[var(--border-subtle)] text-[var(--text-muted)]"
+              }`}
+            >
+              <Cpu size={12} />
+              Smart Swarm (Ollama)
+            </button>
+          </div>
+
+          {swarmMode && (
+            <input
+              className="w-full bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-md px-2.5 py-1.5 text-[12px] text-[var(--text-primary)] mb-2 placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+              placeholder="Path to plan.md (e.g. docs/plans/my-plan.md)"
+              value={planPath}
+              onChange={(e) => setPlanPath(e.target.value)}
+            />
+          )}
+
           {/* Team Preview */}
-          {description.trim() && (
+          {description.trim() && !swarmMode && (
             <div className="mb-2 p-2 rounded-md bg-[var(--bg-primary)]/80 border border-[var(--border-subtle)]">
               <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mb-1.5">
                 Auto-generated team
@@ -288,6 +431,13 @@ export function ProjectPanel({ projectPath, onSwitchToAgents }: ProjectPanelProp
                 </span>
               ))}
             </div>
+
+            {/* Board widget */}
+            {project.boardPath && (
+              <div className="mb-2">
+                <ProjectBoard boardPath={project.boardPath} />
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex items-center gap-1.5">
