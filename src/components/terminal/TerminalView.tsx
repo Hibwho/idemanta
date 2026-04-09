@@ -71,21 +71,24 @@ export function TerminalView({ cwd, id: _id }: { cwd?: string; id?: string }) {
       term.write(event.payload);
     });
 
-    // Open PTY then clear
+    // Open PTY and sync initial size
     invoke("open_terminal", { cwd: cwd || undefined }).then(() => {
-      // Send clear command after shell init
       setTimeout(() => {
-        invoke("write_terminal", { data: "clear\n" }).catch(() => {});
-      }, 500);
+        fitAddon.fit();
+        invoke("resize_terminal", { rows: term.rows, cols: term.cols }).catch(() => {});
+      }, 200);
     }).catch((e) => {
       term.writeln(`\x1b[31mFailed to open terminal: ${e}\x1b[0m`);
     });
 
     setInitialized(true);
 
-    // Resize observer
+    // Resize observer — fit xterm and sync PTY size
     const observer = new ResizeObserver(() => {
-      try { fitAddon.fit(); } catch {}
+      try {
+        fitAddon.fit();
+        invoke("resize_terminal", { rows: term.rows, cols: term.cols }).catch(() => {});
+      } catch {}
     });
     observer.observe(termRef.current);
 

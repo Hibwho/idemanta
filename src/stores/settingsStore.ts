@@ -27,7 +27,7 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
   autoApprove: false,
   showSettings: false,
   ollamaUrl: loadState<string>("ollamaUrl", "http://localhost:11434"),
-  ollamaModel: loadState<string>("ollamaModel", "llama3.1:8b"),
+  ollamaModel: loadState<string>("ollamaModel", "qwen3:8b"),
   orchestratorEnabled: loadState<boolean>("orchestratorEnabled", false),
   setAuthMode: (mode) => set({ authMode: mode }),
   setApiKey: (key) => set({ apiKey: key }),

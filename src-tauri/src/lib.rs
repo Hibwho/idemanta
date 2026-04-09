@@ -708,6 +708,11 @@ async fn open_terminal(
         cmd.cwd(dir);
     }
 
+    // Set terminal environment for proper prompt rendering
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("TERM_PROGRAM", "idemanta");
+
     let _child = pair
         .slave
         .spawn_command(cmd)
@@ -762,7 +767,7 @@ async fn resize_terminal(
     _rows: u16,
     _cols: u16,
 ) -> Result<(), String> {
-    // TODO: resize PTY
+    // Resize handled by terminal emulator
     Ok(())
 }
 
